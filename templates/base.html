@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Retail VQC{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+{% if user %}
+<nav>
+  <span class="brand">Retail VQC</span>
+  <a href="{{ url_for('index') }}">Inspect</a>
+  <a href="{{ url_for('camera') }}">Live camera</a>
+  <a href="{{ url_for('history') }}">History</a>
+  {% if role == 'admin' %}<a href="{{ url_for('analytics') }}">Analytics</a>{% endif %}
+  <span class="who">{{ user }} ({{ role }})</span>
+  <a href="{{ url_for('logout') }}">Logout</a>
+</nav>
+{% endif %}
+<main>
+  {% with msgs = get_flashed_messages() %}{% for m in msgs %}<div class="flash">{{ m }}</div>{% endfor %}{% endwith %}
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

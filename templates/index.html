@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Inspect{% endblock %}
+{% block content %}
+<h1>Inspection station</h1>
+{% if not model_ok %}<div class="flash">No trained model found. Run train.py first.</div>{% endif %}
+
+{% if result %}
+  {% set vc = 'REVIEW' if result.verdict == 'NEEDS REVIEW' else result.verdict %}
+  {% if vc != 'GOOD' %}
+    <div class="banner {{ vc }}">
+      {% if vc == 'DEFECTIVE' %}ALERT: defective product detected{% if alerts_on %} - email sent{% endif %}
+      {% else %}Uncertain result - manual review needed{% endif %}
+    </div>
+  {% endif %}
+{% endif %}
+
+<div class="grid">
+  <div class="card">
+    <h2>Submit product image</h2>
+    <form method="post" action="{{ url_for('inspect') }}" enctype="multipart/form-data">
+      <input type="file" name="product_image" accept="image/*" required>
+      <p><button class="btn" type="submit">Run inspection</button></p>
+    </form>
+    <p class="muted">Items below {{ threshold }}% confidence are marked NEEDS REVIEW.</p>
+  </div>
+
+  <div class="card">
+    <h2>Result</h2>
+    {% if result %}
+      <p class="verdict {{ vc }}">{{ result.verdict }}</p>
+      <p>Confidence: <b>{{ result.confidence }}%</b>
+        {% if result.defect_type not in ('-', '') %} &middot; Type: <b>{{ result.defect_type }}</b>{% endif %}</p>
+      <p>{{ result.reason }}</p>
+      {% for cls, prob in result.class_probabilities.items() %}
+        <div class="prow"><span>{{ cls }}</span>
+          <progress value="{{ (prob * 100)|round(1) }}" max="100"></progress>
+          <span>{{ (prob * 100)|round(1) }}%</span></div>
+      {% endfor %}
+    {% else %}
+      <p class="muted">Upload a product image to see the verdict.</p>
+    {% endif %}
+  </div>
+</div>
+
+{% if result %}
+<div class="grid">
+  <div class="card"><h2>Original</h2>
+    <img class="preview" src="{{ url_for('static', filename='uploads/' + uploaded_image) }}" alt="Uploaded product"></div>
+  <div class="card"><h2>Model focus (Grad-CAM)</h2>
+    {% if gradcam_filename %}
+      <img class="preview" src="{{ url_for('static', filename='results/' + gradcam_filename) }}" alt="Grad-CAM heatmap">
+      <p class="muted">Red/yellow = areas that influenced the decision most.</p>
+    {% else %}<p class="muted">Heatmap not available for this image.</p>{% endif %}
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Recent inspections</h2>
+  <table>
+    <tr><th>Time</th><th>Source</th><th>Verdict</th><th>Type</th><th>Conf.</th></tr>
+    {% for r in history %}
+      <tr><td>{{ r.inspected_at }}</td><td>{{ r.source }}</td>
+          <td><span class="pill {{ 'REVIEW' if r.verdict == 'NEEDS REVIEW' else r.verdict }}">{{ r.verdict }}</span></td>
+          <td>{{ r.defect_type }}</td><td>{{ r.confidence }}%</td></tr>
+    {% else %}<tr><td colspan="5" class="muted">No inspections yet.</td></tr>{% endfor %}
+  </table>
+</div>
+{% endblock %}

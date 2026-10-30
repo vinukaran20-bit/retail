@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Analytics{% endblock %}
+{% block content %}
+<h1>Reports &amp; analytics</h1>
+<div class="kpis">
+  <div class="kpi"><span class="muted">Total inspected</span><b>{{ s.total }}</b></div>
+  <div class="kpi"><span class="muted">Good</span><b>{{ s.good }}</b></div>
+  <div class="kpi"><span class="muted">Defective</span><b>{{ s.defective }}</b></div>
+  <div class="kpi"><span class="muted">Defect rate</span><b>{{ s.defect_rate }}%</b></div>
+</div>
+<div class="grid">
+  <div class="card">
+    <h2>Good vs defective vs review</h2>
+    {% for label, n in [('Good', s.good), ('Defective', s.defective), ('Needs review', s.review)] %}
+      <div class="prow"><span>{{ label }}</span>
+        <progress value="{{ n }}" max="{{ s.total if s.total else 1 }}"></progress><span>{{ n }}</span></div>
+    {% endfor %}
+    <p class="muted">Average confidence: {{ s.avg_conf }}%</p>
+  </div>
+  <div class="card">
+    <h2>Defects by type</h2>
+    {% for t in s.by_type %}
+      <div class="prow"><span>{{ t.defect_type }}</span>
+        <progress value="{{ t.n }}" max="{{ s.defective if s.defective else 1 }}"></progress><span>{{ t.n }}</span></div>
+    {% else %}<p class="muted">No defects logged yet.</p>{% endfor %}
+  </div>
+</div>
+<div class="card">
+  <h2>Inspections per day (last 14 days)</h2>
+  <table>
+    <tr><th>Date</th><th>Inspections</th><th>Defective</th><th></th></tr>
+    {% for d in s.per_day %}
+      <tr><td>{{ d.day }}</td><td>{{ d.n }}</td><td>{{ d.defective or 0 }}</td>
+          <td><progress value="{{ d.n }}" max="{{ (s.per_day|map(attribute='n')|max) }}"></progress></td></tr>
+    {% else %}<tr><td colspan="4" class="muted">No data yet.</td></tr>{% endfor %}
+  </table>
+</div>
+{% endblock %}

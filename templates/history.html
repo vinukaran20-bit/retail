@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}History{% endblock %}
+{% block content %}
+<h1>Inspection history</h1>
+<div class="card">
+  <form method="get" class="row">
+    <select name="verdict" style="width:auto">
+      <option value="">All verdicts</option>
+      {% for v in ['GOOD', 'DEFECTIVE', 'NEEDS REVIEW'] %}
+        <option value="{{ v }}" {% if v == verdict %}selected{% endif %}>{{ v }}</option>
+      {% endfor %}
+    </select>
+    <select name="source" style="width:auto">
+      <option value="">All sources</option>
+      {% for s in ['upload', 'camera'] %}
+        <option value="{{ s }}" {% if s == source %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+    <button class="btn" type="submit">Filter</button>
+    {% if role == 'admin' %}
+      <a class="btn secondary" href="{{ url_for('export_csv', verdict=verdict, source=source) }}">Export CSV</a>
+    {% endif %}
+    <span class="muted">{{ rows|length }} record(s)</span>
+  </form>
+</div>
+<div class="card">
+  <table>
+    <tr><th>Time</th><th>Image</th><th>Source</th><th>Verdict</th><th>Type</th><th>Conf.</th><th>Operator</th><th>Reason</th></tr>
+    {% for r in rows %}
+      <tr><td>{{ r.inspected_at }}</td>
+          <td><a href="{{ url_for('static', filename='uploads/' + r.image_name) }}" target="_blank">view</a></td>
+          <td>{{ r.source }}</td>
+          <td><span class="pill {{ 'REVIEW' if r.verdict == 'NEEDS REVIEW' else r.verdict }}">{{ r.verdict }}</span></td>
+          <td>{{ r.defect_type }}</td><td>{{ r.confidence }}%</td><td>{{ r.operator }}</td>
+          <td class="muted">{{ r.reason }}</td></tr>
+    {% else %}<tr><td colspan="8" class="muted">No records match.</td></tr>{% endfor %}
+  </table>
+</div>
+{% endblock %}

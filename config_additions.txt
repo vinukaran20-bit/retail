@@ -1,0 +1,18 @@
+
+# ======================= FINAL PHASE ADDITIONS (append to config.py) =======================
+TEST_DIR = os.path.join(BASE_DIR, "dataset", "test")        # unseen pens: test/good, test/defective
+EVAL_DIR = os.path.join(BASE_DIR, "static", "evaluation")   # metrics + plots are saved here
+DB_PATH = os.path.join(BASE_DIR, "inspection_v2.db")
+SECRET_KEY = os.environ.get("VQC_SECRET", "change-this-secret-before-demo")
+
+# Below this confidence the verdict becomes "NEEDS REVIEW" instead of GOOD/DEFECTIVE
+REVIEW_THRESHOLD = 0.75
+
+# Email alert (leave SMTP_USER empty to disable). Use environment variables or edit here.
+SMTP_HOST = os.environ.get("VQC_SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT = int(os.environ.get("VQC_SMTP_PORT", "587"))
+SMTP_USER = os.environ.get("VQC_SMTP_USER", "")      # e.g. yourname@gmail.com
+SMTP_PASS = os.environ.get("VQC_SMTP_PASS", "")      # Gmail "App Password", not your normal password
+ALERT_TO = os.environ.get("VQC_ALERT_TO", "")        # who receives the alert
+
+os.makedirs(EVAL_DIR, exist_ok=True)
