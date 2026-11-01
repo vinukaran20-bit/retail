@@ -1,38 +1,185 @@
 {% extends "base.html" %}
 {% block title %}Analytics{% endblock %}
 {% block content %}
-<h1>Reports &amp; analytics</h1>
-<div class="kpis">
-  <div class="kpi"><span class="muted">Total inspected</span><b>{{ s.total }}</b></div>
-  <div class="kpi"><span class="muted">Good</span><b>{{ s.good }}</b></div>
-  <div class="kpi"><span class="muted">Defective</span><b>{{ s.defective }}</b></div>
-  <div class="kpi"><span class="muted">Defect rate</span><b>{{ s.defect_rate }}%</b></div>
-</div>
-<div class="grid">
-  <div class="card">
-    <h2>Good vs defective vs review</h2>
-    {% for label, n in [('Good', s.good), ('Defective', s.defective), ('Needs review', s.review)] %}
-      <div class="prow"><span>{{ label }}</span>
-        <progress value="{{ n }}" max="{{ s.total if s.total else 1 }}"></progress><span>{{ n }}</span></div>
-    {% endfor %}
-    <p class="muted">Average confidence: {{ s.avg_conf }}%</p>
+<style>
+  .analytics { --bg:#fff; --ink:#1f2937; --muted:#6b7280; --line:#e5e7eb;
+               --good:#10b981; --bad:#ef4444; --warn:#f59e0b; --accent:#3b82f6;
+               --radius:14px; --shadow:0 1px 2px rgba(0,0,0,.04),0 4px 12px rgba(0,0,0,.06); }
+  .analytics h1 { margin:0 0 1.25rem; font-size:1.6rem; font-weight:700; color:var(--ink); letter-spacing:-.01em; }
+  .analytics h2 { margin:0 0 1rem; font-size:1.05rem; font-weight:600; color:var(--ink); }
+  .analytics .muted { color:var(--muted); font-size:.875rem; }
+
+  /* KPI cards */
+  .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:1rem; margin-bottom:1.5rem; }
+  .kpi { background:var(--bg); border:1px solid var(--line); border-radius:var(--radius);
+         padding:1rem 1.15rem; box-shadow:var(--shadow); position:relative; overflow:hidden; }
+  .kpi::before { content:""; position:absolute; inset:0 auto 0 0; width:4px;
+                 background:var(--accent); }
+  .kpi.good::before { background:var(--good); }
+  .kpi.bad::before  { background:var(--bad);  }
+  .kpi.warn::before { background:var(--warn); }
+  .kpi .label { display:block; font-size:.8rem; text-transform:uppercase; letter-spacing:.04em;
+                color:var(--muted); margin-bottom:.35rem; }
+  .kpi .value { font-size:1.75rem; font-weight:700; color:var(--ink); line-height:1.1; }
+  .kpi .sub { font-size:.8rem; color:var(--muted); margin-top:.25rem; }
+
+  /* Layout */
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:1.25rem; margin-bottom:1.5rem; }
+  .card { background:var(--bg); border:1px solid var(--line); border-radius:var(--radius);
+          padding:1.25rem 1.35rem; box-shadow:var(--shadow); }
+
+  /* Custom progress rows (accessible + styled) */
+  .prow { display:grid; grid-template-columns:110px 1fr 48px; align-items:center;
+          gap:.75rem; padding:.45rem 0; font-size:.9rem; color:var(--ink); }
+  .prow .bar { height:10px; background:#f3f4f6; border-radius:999px; overflow:hidden; }
+  .prow .fill { height:100%; border-radius:999px; background:var(--accent);
+                transition:width .35s ease; }
+  .prow.good .fill { background:var(--good); }
+  .prow.bad  .fill { background:var(--bad);  }
+  .prow.warn .fill { background:var(--warn); }
+  .prow .num { text-align:right; font-variant-numeric:tabular-nums; color:var(--muted); }
+
+  /* Table */
+  table { width:100%; border-collapse:collapse; font-size:.9rem; }
+  thead th { text-align:left; font-size:.75rem; text-transform:uppercase; letter-spacing:.04em;
+             color:var(--muted); padding:.6rem .5rem; border-bottom:1px solid var(--line); font-weight:600; }
+  tbody td { padding:.55rem .5rem; border-bottom:1px solid #f3f4f6; color:var(--ink); }
+  tbody tr:hover td { background:#fafbfc; }
+  tbody td .minibar { display:inline-block; height:8px; width:80px; background:#f3f4f6;
+                      border-radius:999px; overflow:hidden; vertical-align:middle; }
+  tbody td .minibar > span { display:block; height:100%; background:var(--accent); border-radius:999px; }
+
+  /* Empty state */
+  .empty { text-align:center; padding:1.5rem 1rem; color:var(--muted); font-size:.9rem; }
+  .empty svg { display:block; margin:0 auto .5rem; opacity:.5; }
+
+  /* Confidence chip */
+  .chip { display:inline-block; padding:.15rem .55rem; border-radius:999px;
+          font-size:.75rem; font-weight:600; }
+  .chip.good { background:#ecfdf5; color:#047857; }
+  .chip.warn { background:#fffbeb; color:#b45309; }
+  .chip.bad  { background:#fef2f2; color:#b91c1c; }
+</style>
+
+<div class="analytics">
+  <h1>Reports &amp; analytics</h1>
+
+  <!-- KPI row -->
+  <div class="kpis">
+    <div class="kpi">
+      <span class="label">Total inspected</span>
+      <span class="value">{{ s.total }}</span>
+    </div>
+    <div class="kpi good">
+      <span class="label">Good</span>
+      <span class="value">{{ s.good }}</span>
+      <div class="sub">{{ ((s.good / s.total * 100) if s.total else 0) | round(1) }}% of total</div>
+    </div>
+    <div class="kpi bad">
+      <span class="label">Defective</span>
+      <span class="value">{{ s.defective }}</span>
+      <div class="sub">{{ ((s.defective / s.total * 100) if s.total else 0) | round(1) }}% of total</div>
+    </div>
+    <div class="kpi warn">
+      <span class="label">Defect rate</span>
+      <span class="value">{{ s.defect_rate }}%</span>
+    </div>
   </div>
-  <div class="card">
-    <h2>Defects by type</h2>
-    {% for t in s.by_type %}
-      <div class="prow"><span>{{ t.defect_type }}</span>
-        <progress value="{{ t.n }}" max="{{ s.defective if s.defective else 1 }}"></progress><span>{{ t.n }}</span></div>
-    {% else %}<p class="muted">No defects logged yet.</p>{% endfor %}
+
+  <!-- Two-column grid -->
+  <div class="grid">
+    <div class="card">
+      <h2>Good vs defective vs review</h2>
+      {% set total = s.total if s.total else 1 %}
+      {% for label, n, cls in [('Good', s.good, 'good'),
+                               ('Defective', s.defective, 'bad'),
+                               ('Needs review', s.review, 'warn')] %}
+        <div class="prow {{ cls }}"
+             role="group"
+             aria-label="{{ label }}: {{ n }} of {{ s.total }}">
+          <span>{{ label }}</span>
+          <div class="bar"><div class="fill"
+               style="width: {{ (n / total * 100) | round(1) }}%"></div></div>
+          <span class="num">{{ n }}</span>
+        </div>
+      {% endfor %}
+      <p style="margin-top:1rem;">
+        {% set conf = s.avg_conf|default(0)|float %}
+        <span class="chip {% if conf >= 85 %}good{% elif conf >= 70 %}warn{% else %}bad{% endif %}">
+          Avg confidence: {{ s.avg_conf }}%
+        </span>
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>Defects by type</h2>
+      {% set dtotal = s.defective if s.defective else 1 %}
+      {% if s.by_type %}
+        {% for t in s.by_type %}
+          <div class="prow bad"
+               role="group"
+               aria-label="{{ t.defect_type }}: {{ t.n }} defects">
+            <span title="{{ t.defect_type }}">{{ t.defect_type }}</span>
+            <div class="bar"><div class="fill"
+                 style="width: {{ (t.n / dtotal * 100) | round(1) }}%"></div></div>
+            <span class="num">{{ t.n }}</span>
+          </div>
+        {% endfor %}
+      {% else %}
+        <div class="empty">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="1.5">
+            <path d="M9 12l2 2 4-4M12 22a10 10 0 100-20 10 10 0 000 20z"/>
+          </svg>
+          No defects logged yet — that's a good thing!
+        </div>
+      {% endif %}
+    </div>
   </div>
-</div>
-<div class="card">
-  <h2>Inspections per day (last 14 days)</h2>
-  <table>
-    <tr><th>Date</th><th>Inspections</th><th>Defective</th><th></th></tr>
-    {% for d in s.per_day %}
-      <tr><td>{{ d.day }}</td><td>{{ d.n }}</td><td>{{ d.defective or 0 }}</td>
-          <td><progress value="{{ d.n }}" max="{{ (s.per_day|map(attribute='n')|max) }}"></progress></td></tr>
-    {% else %}<tr><td colspan="4" class="muted">No data yet.</td></tr>{% endfor %}
-  </table>
+
+  <!-- Per-day table -->
+  <div class="card">
+    <h2>Inspections per day <span class="muted">(last 14 days)</span></h2>
+    {% if s.per_day %}
+      {% set max_n = (s.per_day | map(attribute='n') | max) or 1 %}
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Inspections</th>
+            <th>Defective</th>
+            <th>Trend</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for d in s.per_day %}
+            <tr>
+              <td>{{ d.day }}</td>
+              <td>{{ d.n }}</td>
+              <td>
+                {% set dv = d.defective or 0 %}
+                {% if dv %}
+                  <span class="chip {% if dv / d.n > 0.15 %}bad{% else %}warn{% endif %}">{{ dv }}</span>
+                {% else %}<span class="muted">0</span>{% endif %}
+              </td>
+              <td>
+                <span class="minibar" aria-hidden="true">
+                  <span style="width: {{ (d.n / max_n * 100) | round(1) }}%"></span>
+                </span>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="1.5">
+          <path d="M3 3v18h18M7 14l4-4 3 3 5-6"/>
+        </svg>
+        No data yet. Inspections will appear here as they're logged.
+      </div>
+    {% endif %}
+  </div>
 </div>
 {% endblock %}

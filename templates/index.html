@@ -1,69 +1,759 @@
 {% extends "base.html" %}
-{% block title %}Inspect{% endblock %}
+{% block title %}Inspection Station{% endblock %}
 {% block content %}
-<h1>Inspection station</h1>
-{% if not model_ok %}<div class="flash">No trained model found. Run train.py first.</div>{% endif %}
+<style>
+  /* ── Design Tokens ── */
+  :root {
+    --ok: #10b981;
+    --bad: #ef4444;
+    --warn: #f59e0b;
+    --ink: #111827;
+    --muted: #6b7280;
+    --surface: #ffffff;
+    --bg: #f9fafb;
+    --line: #e5e7eb;
+    --accent: #3b82f6;
+    --accent-2: #2563eb;
+    --shadow-sm: 0 1px 3px rgba(0,0,0,.06);
+    --shadow-md: 0 4px 14px rgba(0,0,0,.07);
+    --radius: 16px;
+    --radius-sm: 12px;
+  }
 
-{% if result %}
-  {% set vc = 'REVIEW' if result.verdict == 'NEEDS REVIEW' else result.verdict %}
-  {% if vc != 'GOOD' %}
-    <div class="banner {{ vc }}">
-      {% if vc == 'DEFECTIVE' %}ALERT: defective product detected{% if alerts_on %} - email sent{% endif %}
-      {% else %}Uncertain result - manual review needed{% endif %}
+  .inspect {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1.5rem 1rem 3rem;
+  }
+
+  /* ── Typography ── */
+  .inspect h1 {
+    margin: 0 0 1.25rem;
+    font-size: 1.75rem;
+    font-weight: 800;
+    letter-spacing: -.02em;
+    color: var(--ink);
+    display: flex;
+    align-items: center;
+    gap: .65rem;
+  }
+  .inspect h1::before {
+    content: "🔬";
+    font-size: 1.5rem;
+  }
+  .inspect h2 {
+    margin: 0 0 1rem;
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--ink);
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+  }
+  .inspect h2 .badge {
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    padding: .15rem .5rem;
+    border-radius: 999px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    color: var(--muted);
+  }
+  .inspect .muted { color: var(--muted); font-size: .88rem; }
+
+  /* ── Alert Banner ── */
+  .alert-banner {
+    display: flex;
+    align-items: center;
+    gap: .85rem;
+    padding: 1rem 1.25rem;
+    border-radius: var(--radius-sm);
+    margin-bottom: 1.5rem;
+    font-weight: 600;
+    font-size: .95rem;
+    border: 1px solid transparent;
+    box-shadow: var(--shadow-sm);
+    animation: slide-in .3s ease-out;
+  }
+  .alert-banner::before {
+    content: "";
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.15rem;
+    font-weight: 800;
+  }
+  .alert-banner.DEFECTIVE {
+    background: color-mix(in srgb, var(--bad) 10%, var(--surface));
+    border-color: color-mix(in srgb, var(--bad) 30%, var(--line));
+    color: #b91c1c;
+  }
+  .alert-banner.DEFECTIVE::before { content: "!"; background: var(--bad); color: #fff; }
+  .alert-banner.REVIEW {
+    background: color-mix(in srgb, var(--warn) 12%, var(--surface));
+    border-color: color-mix(in srgb, var(--warn) 34%, var(--line));
+    color: #b45309;
+  }
+  .alert-banner.REVIEW::before { content: "?"; background: var(--warn); color: #fff; }
+  .alert-banner .sub { font-weight: 400; font-size: .85rem; opacity: .85; margin-left: .35rem; }
+  @keyframes slide-in {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── Layout Grid ── */
+  .inspect-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  .inspect-grid.equal { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  @media (max-width: 860px) {
+    .inspect-grid, .inspect-grid.equal { grid-template-columns: 1fr; }
+  }
+
+  /* ── Card ── */
+  .icard {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 1.5rem;
+    box-shadow: var(--shadow-md);
+    transition: box-shadow .2s ease;
+  }
+  .icard:hover { box-shadow: 0 8px 28px rgba(0,0,0,.09); }
+
+  /* ── Dropzone ── */
+  .dropzone {
+    border: 2px dashed var(--line);
+    border-radius: var(--radius-sm);
+    padding: 2.25rem 1.5rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all .18s ease;
+    background: var(--bg);
+    position: relative;
+  }
+  .dropzone:hover, .dropzone.dragover {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 5%, var(--surface));
+  }
+  .dropzone.dragover { transform: scale(1.01); }
+  .dropzone input[type=file] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
+  }
+  .dropzone .dz-icon {
+    width: 52px;
+    height: 52px;
+    margin: 0 auto .85rem;
+    border-radius: 14px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 1.5rem;
+    box-shadow: 0 6px 18px rgba(59,130,246,.3);
+  }
+  .dropzone .dz-title { font-weight: 600; color: var(--ink); margin: 0 0 .3rem; font-size: .98rem; }
+  .dropzone .dz-hint  { color: var(--muted); font-size: .85rem; margin: 0; }
+
+  /* Preview */
+  .dz-preview {
+    display: none;
+    margin-top: 1.15rem;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    border: 1px solid var(--line);
+    background: #0b1220;
+    position: relative;
+  }
+  .dz-preview.visible { display: block; }
+  .dz-preview img { width: 100%; display: block; max-height: 280px; object-fit: contain; }
+  .dz-preview .dz-clear {
+    position: absolute;
+    top: .5rem;
+    right: .5rem;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: rgba(0,0,0,.65);
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background .15s;
+  }
+  .dz-preview .dz-clear:hover { background: var(--bad); }
+
+  /* ── Submit Button ── */
+  .btn-block {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .6rem;
+    width: 100%;
+    margin-top: 1.15rem;
+    padding: .9rem 1.2rem;
+    border-radius: 10px;
+    border: none;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #fff;
+    font-weight: 600;
+    font-size: .95rem;
+    cursor: pointer;
+    font-family: inherit;
+    box-shadow: 0 4px 14px rgba(59,130,246,.35);
+    transition: all .15s ease;
+  }
+  .btn-block:hover { box-shadow: 0 6px 22px rgba(59,130,246,.45); transform: translateY(-1px); }
+  .btn-block:active { transform: translateY(0); }
+  .btn-block:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; transform: none; }
+  .btn-block .spinner {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,.4);
+    border-top-color: #fff;
+    animation: spin .7s linear infinite;
+    display: none;
+  }
+  .btn-block.loading .spinner { display: inline-block; }
+  .btn-block.loading .label-icon { display: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Threshold note */
+  .threshold-note {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    margin-top: 1.15rem;
+    padding: .7rem .9rem;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--accent) 6%, transparent);
+    border-left: 3px solid var(--accent);
+    font-size: .84rem;
+    color: var(--muted);
+  }
+  .threshold-note strong { color: var(--ink); }
+
+  /* ── Verdict Hero ── */
+  .verdict-hero {
+    padding: 1.65rem 1.35rem;
+    border-radius: var(--radius-sm);
+    text-align: center;
+    margin-bottom: 1.25rem;
+    transition: all .3s ease;
+    border: 1px solid var(--line);
+    background: var(--bg);
+  }
+  .verdict-hero .label {
+    font-size: .72rem;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: .4rem;
+  }
+  .verdict-hero .value {
+    font-size: 2.25rem;
+    font-weight: 800;
+    letter-spacing: -.02em;
+    margin: 0;
+  }
+  .verdict-hero.GOOD {
+    background: color-mix(in srgb, var(--ok) 8%, var(--surface));
+    border-color: color-mix(in srgb, var(--ok) 28%, var(--line));
+  }
+  .verdict-hero.GOOD .value { color: #047857; }
+  .verdict-hero.DEFECTIVE {
+    background: color-mix(in srgb, var(--bad) 8%, var(--surface));
+    border-color: color-mix(in srgb, var(--bad) 28%, var(--line));
+  }
+  .verdict-hero.DEFECTIVE .value { color: #b91c1c; }
+  .verdict-hero.REVIEW {
+    background: color-mix(in srgb, var(--warn) 10%, var(--surface));
+    border-color: color-mix(in srgb, var(--warn) 30%, var(--line));
+  }
+  .verdict-hero.REVIEW .value { color: #b45309; }
+
+  .verdict-meta {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: .5rem;
+    margin-top: .85rem;
+  }
+  .vchip {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    padding: .32rem .8rem;
+    border-radius: 999px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    font-size: .83rem;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .vchip strong { font-weight: 700; }
+  .vchip.conf-high {
+    background: color-mix(in srgb, var(--ok) 10%, var(--surface));
+    border-color: color-mix(in srgb, var(--ok) 26%, var(--line));
+    color: #047857;
+  }
+  .vchip.conf-mid  {
+    background: color-mix(in srgb, var(--warn) 10%, var(--surface));
+    border-color: color-mix(in srgb, var(--warn) 26%, var(--line));
+    color: #b45309;
+  }
+  .vchip.conf-low  {
+    background: color-mix(in srgb, var(--bad) 10%, var(--surface));
+    border-color: color-mix(in srgb, var(--bad) 26%, var(--line));
+    color: #b91c1c;
+  }
+
+  .reason-box {
+    padding: .9rem 1.1rem;
+    border-radius: 10px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    font-size: .88rem;
+    color: var(--ink);
+    line-height: 1.6;
+    margin-bottom: 1.25rem;
+  }
+
+  /* ── Probability Bars ── */
+  .prob-list { display: flex; flex-direction: column; gap: .6rem; }
+  .prob-row {
+    display: grid;
+    grid-template-columns: 110px 1fr 55px;
+    align-items: center;
+    gap: .75rem;
+    font-size: .88rem;
+  }
+  .prob-row .cls {
+    font-weight: 600;
+    color: var(--ink);
+    text-transform: capitalize;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .prob-row .track {
+    height: 10px;
+    border-radius: 999px;
+    background: var(--bg);
+    overflow: hidden;
+    border: 1px solid var(--line);
+  }
+  .prob-row .fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    transition: width .5s ease;
+  }
+  .prob-row.max .fill {
+    background: linear-gradient(90deg, var(--ok), #059669);
+  }
+  .prob-row .pct {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: var(--muted);
+  }
+
+  /* ── Result Images ── */
+  .img-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: var(--shadow-md);
+    transition: box-shadow .2s ease;
+  }
+  .img-card:hover { box-shadow: 0 8px 28px rgba(0,0,0,.09); }
+  .img-card header {
+    padding: .8rem 1.1rem;
+    border-bottom: 1px solid var(--line);
+    background: var(--bg);
+    font-size: .82rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+  }
+  .img-card header::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  .img-card figure {
+    margin: 0;
+    padding: 1.15rem;
+    background: #0b1220;
+  }
+  .img-card figure img {
+    width: 100%;
+    display: block;
+    max-height: 340px;
+    object-fit: contain;
+    border-radius: 6px;
+  }
+  .img-card .caption {
+    padding: .7rem 1.1rem;
+    font-size: .82rem;
+    color: var(--muted);
+    border-top: 1px solid var(--line);
+    background: var(--surface);
+  }
+
+  /* ── Recent Inspections ── */
+  .recent { padding: 0; overflow: hidden; }
+  .recent header {
+    padding: 1.15rem 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--line);
+  }
+  .recent header h2 { margin: 0; }
+  .recent header a {
+    font-size: .82rem;
+    color: var(--accent);
+    font-weight: 600;
+    text-decoration: none;
+    transition: color .15s;
+  }
+  .recent header a:hover { color: var(--accent-2); text-decoration: underline; }
+  .recent-list { display: flex; flex-direction: column; }
+  .recent-row {
+    display: grid;
+    grid-template-columns: 130px 90px 1fr 100px 70px;
+    align-items: center;
+    gap: .75rem;
+    padding: .75rem 1.5rem;
+    border-bottom: 1px solid var(--line);
+    font-size: .86rem;
+    transition: background .12s;
+  }
+  .recent-row:last-child { border-bottom: none; }
+  .recent-row:hover { background: color-mix(in srgb, var(--accent) 4%, transparent); }
+  .recent-row .time {
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    font-size: .82rem;
+  }
+  .recent-row .src {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    font-size: .78rem;
+    color: var(--muted);
+    text-transform: capitalize;
+  }
+  .recent-row .src::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: .6;
+  }
+  .recent-row .type {
+    color: var(--muted);
+    font-size: .82rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .recent-row .conf {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    padding: .25rem .65rem;
+    border-radius: 999px;
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .04em;
+    white-space: nowrap;
+  }
+  .pill::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  .pill.GOOD      { background: color-mix(in srgb, var(--ok) 12%, var(--surface)); color: #047857; }
+  .pill.DEFECTIVE { background: color-mix(in srgb, var(--bad) 12%, var(--surface)); color: #b91c1c; }
+  .pill.REVIEW    { background: color-mix(in srgb, var(--warn) 14%, var(--surface)); color: #b45309; }
+
+  .recent-empty {
+    padding: 2.25rem 1.5rem;
+    text-align: center;
+    color: var(--muted);
+    font-size: .9rem;
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 720px) {
+    .inspect { padding: 1rem .75rem 2rem; }
+    .inspect h1 { font-size: 1.4rem; }
+    .recent-row { grid-template-columns: 1fr auto; gap: .35rem; }
+    .recent-row .time { grid-column: 1 / -1; font-size: .75rem; }
+    .recent-row .src  { grid-column: 1 / 2; }
+    .recent-row .conf { grid-column: 2 / 3; text-align: right; }
+    .recent-row .pill { grid-column: 1 / -1; justify-self: start; }
+    .recent-row .type { grid-column: 1 / -1; }
+    .prob-row { grid-template-columns: 90px 1fr 48px; }
+  }
+</style>
+
+<div class="inspect">
+  <h1>Inspection Station</h1>
+
+  {% if not model_ok %}
+    <div class="alert-banner REVIEW">
+      No trained model found. <span class="sub">Run <code>train.py</code> before inspecting.</span>
     </div>
   {% endif %}
-{% endif %}
 
-<div class="grid">
-  <div class="card">
-    <h2>Submit product image</h2>
-    <form method="post" action="{{ url_for('inspect') }}" enctype="multipart/form-data">
-      <input type="file" name="product_image" accept="image/*" required>
-      <p><button class="btn" type="submit">Run inspection</button></p>
-    </form>
-    <p class="muted">Items below {{ threshold }}% confidence are marked NEEDS REVIEW.</p>
+  {% if result %}
+    {% set vc = 'REVIEW' if result.verdict == 'NEEDS REVIEW' else result.verdict %}
+    {% if vc != 'GOOD' %}
+      <div class="alert-banner {{ vc }}" role="alert">
+        {% if vc == 'DEFECTIVE' %}
+          Defective product detected{% if alerts_on %}<span class="sub">· Email alert sent</span>{% endif %}
+        {% else %}
+          Uncertain result — manual review needed
+        {% endif %}
+      </div>
+    {% endif %}
+  {% endif %}
+
+  <!-- ═══════════ Upload + Result ═══════════ -->
+  <div class="inspect-grid">
+
+    <!-- Upload Card -->
+    <div class="icard">
+      <h2>Submit product image</h2>
+      <form method="post" action="{{ url_for('inspect') }}"
+            enctype="multipart/form-data" id="inspectForm">
+        <label class="dropzone" id="dropzone" for="fileInput">
+          <div class="dz-icon" aria-hidden="true">↑</div>
+          <p class="dz-title">Drop an image here, or click to browse</p>
+          <p class="dz-hint">PNG, JPG, or WEBP · max 10&nbsp;MB</p>
+          <input type="file" name="product_image" id="fileInput"
+                 accept="image/*" required>
+        </label>
+
+        <div class="dz-preview" id="dzPreview">
+          <img id="dzPreviewImg" alt="Selected image preview">
+          <button type="button" class="dz-clear" id="dzClear"
+                  aria-label="Clear selected image">✕</button>
+        </div>
+
+        <button class="btn-block" type="submit" id="submitBtn" {% if not model_ok %}disabled{% endif %}>
+          <span class="spinner" aria-hidden="true"></span>
+          <span class="label-icon" aria-hidden="true">⚡</span>
+          <span>Run inspection</span>
+        </button>
+      </form>
+
+      <div class="threshold-note">
+        <span aria-hidden="true">ℹ</span>
+        Items below <strong>{{ threshold }}%</strong> confidence are marked <strong>NEEDS REVIEW</strong>.
+      </div>
+    </div>
+
+    <!-- Result Card -->
+    <div class="icard">
+      <h2>Result {% if result %}<span class="badge">Latest</span>{% endif %}</h2>
+
+      {% if result %}
+        {% set conf = result.confidence|default(0)|float %}
+        {% set conf_cls = 'conf-high' if conf >= 85 else ('conf-mid' if conf >= 70 else 'conf-low') %}
+
+        <div class="verdict-hero {{ vc }}">
+          <div class="label">Verdict</div>
+          <p class="value">{{ result.verdict }}</p>
+          <div class="verdict-meta">
+            <span class="vchip {{ conf_cls }}">Confidence <strong>{{ result.confidence }}%</strong></span>
+            {% if result.defect_type not in ('-', '', None) %}
+              <span class="vchip">Type <strong>{{ result.defect_type }}</strong></span>
+            {% endif %}
+          </div>
+        </div>
+
+        {% if result.reason %}
+          <div class="reason-box">{{ result.reason }}</div>
+        {% endif %}
+
+        {% if result.class_probabilities %}
+          <h2 style="font-size:.88rem; margin-bottom:.75rem;">Class probabilities</h2>
+          <div class="prob-list">
+            {% set max_prob = result.class_probabilities.values()|max %}
+            {% for cls, prob in result.class_probabilities.items() %}
+              <div class="prob-row {% if prob == max_prob %}max{% endif %}">
+                <span class="cls" title="{{ cls }}">{{ cls }}</span>
+                <span class="track">
+                  <span class="fill" style="width: {{ (prob * 100)|round(1) }}%"></span>
+                </span>
+                <span class="pct">{{ (prob * 100)|round(1) }}%</span>
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% else %}
+        <div class="recent-empty" style="padding:2.75rem 1rem;">
+          <div style="font-size:2.25rem; opacity:.35; margin-bottom:.65rem;" aria-hidden="true">🔍</div>
+          Upload a product image to see the verdict here.
+        </div>
+      {% endif %}
+    </div>
   </div>
 
-  <div class="card">
-    <h2>Result</h2>
-    {% if result %}
-      <p class="verdict {{ vc }}">{{ result.verdict }}</p>
-      <p>Confidence: <b>{{ result.confidence }}%</b>
-        {% if result.defect_type not in ('-', '') %} &middot; Type: <b>{{ result.defect_type }}</b>{% endif %}</p>
-      <p>{{ result.reason }}</p>
-      {% for cls, prob in result.class_probabilities.items() %}
-        <div class="prow"><span>{{ cls }}</span>
-          <progress value="{{ (prob * 100)|round(1) }}" max="100"></progress>
-          <span>{{ (prob * 100)|round(1) }}%</span></div>
-      {% endfor %}
+  <!-- ═══════════ Result Images ═══════════ -->
+  {% if result %}
+    <div class="inspect-grid equal" style="margin-bottom:1.5rem;">
+      <div class="img-card">
+        <header>Original</header>
+        <figure>
+          <img src="{{ url_for('static', filename='uploads/' + uploaded_image) }}"
+               alt="Uploaded product image">
+        </figure>
+      </div>
+
+      <div class="img-card">
+        <header>Model focus · Grad-CAM</header>
+        {% if gradcam_filename %}
+          <figure>
+            <img src="{{ url_for('static', filename='results/' + gradcam_filename) }}"
+                 alt="Grad-CAM heatmap showing areas that influenced the decision">
+          </figure>
+          <div class="caption">Red / yellow = areas that influenced the decision most.</div>
+        {% else %}
+          <div class="recent-empty" style="padding:2.5rem 1rem;">
+            Heatmap not available for this image.
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+
+  <!-- ═══════════ Recent Inspections ═══════════ -->
+  <div class="icard recent">
+    <header>
+      <h2>Recent inspections</h2>
+      <a href="{{ url_for('history') }}">View all →</a>
+    </header>
+
+    {% if history %}
+      <div class="recent-list">
+        {% for r in history %}
+          {% set pv = 'REVIEW' if r.verdict == 'NEEDS REVIEW' else r.verdict %}
+          <div class="recent-row">
+            <span class="time">{{ r.inspected_at }}</span>
+            <span class="src">{{ r.source }}</span>
+            <span class="type" title="{{ r.defect_type }}">{{ r.defect_type }}</span>
+            <span class="pill {{ pv }}">{{ r.verdict }}</span>
+            <span class="conf">{{ r.confidence }}%</span>
+          </div>
+        {% endfor %}
+      </div>
     {% else %}
-      <p class="muted">Upload a product image to see the verdict.</p>
+      <div class="recent-empty">No inspections yet — run your first one above.</div>
     {% endif %}
   </div>
 </div>
 
-{% if result %}
-<div class="grid">
-  <div class="card"><h2>Original</h2>
-    <img class="preview" src="{{ url_for('static', filename='uploads/' + uploaded_image) }}" alt="Uploaded product"></div>
-  <div class="card"><h2>Model focus (Grad-CAM)</h2>
-    {% if gradcam_filename %}
-      <img class="preview" src="{{ url_for('static', filename='results/' + gradcam_filename) }}" alt="Grad-CAM heatmap">
-      <p class="muted">Red/yellow = areas that influenced the decision most.</p>
-    {% else %}<p class="muted">Heatmap not available for this image.</p>{% endif %}
-  </div>
-</div>
-{% endif %}
+<script>
+(function () {
+  const form       = document.getElementById('inspectForm');
+  const input      = document.getElementById('fileInput');
+  const dropzone   = document.getElementById('dropzone');
+  const previewBox = document.getElementById('dzPreview');
+  const previewImg = document.getElementById('dzPreviewImg');
+  const clearBtn   = document.getElementById('dzClear');
+  const submitBtn  = document.getElementById('submitBtn');
 
-<div class="card">
-  <h2>Recent inspections</h2>
-  <table>
-    <tr><th>Time</th><th>Source</th><th>Verdict</th><th>Type</th><th>Conf.</th></tr>
-    {% for r in history %}
-      <tr><td>{{ r.inspected_at }}</td><td>{{ r.source }}</td>
-          <td><span class="pill {{ 'REVIEW' if r.verdict == 'NEEDS REVIEW' else r.verdict }}">{{ r.verdict }}</span></td>
-          <td>{{ r.defect_type }}</td><td>{{ r.confidence }}%</td></tr>
-    {% else %}<tr><td colspan="5" class="muted">No inspections yet.</td></tr>{% endfor %}
-  </table>
-</div>
+  // ── Image preview ──────────────────────────────────────
+  function showPreview(file) {
+    if (!file || !file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      previewImg.src = e.target.result;
+      previewBox.classList.add('visible');
+      dropzone.style.display = 'none';
+    };
+    reader.readAsDataURL(file);
+  }
+
+  input.addEventListener('change', () => showPreview(input.files[0]));
+
+  clearBtn.addEventListener('click', () => {
+    input.value = '';
+    previewImg.src = '';
+    previewBox.classList.remove('visible');
+    dropzone.style.display = '';
+  });
+
+  // ── Drag & drop ────────────────────────────────────────
+  ['dragenter', 'dragover'].forEach(evt =>
+    dropzone.addEventListener(evt, e => {
+      e.preventDefault();
+      dropzone.classList.add('dragover');
+    })
+  );
+  ['dragleave', 'drop'].forEach(evt =>
+    dropzone.addEventListener(evt, e => {
+      e.preventDefault();
+      dropzone.classList.remove('dragover');
+    })
+  );
+  dropzone.addEventListener('drop', e => {
+    if (e.dataTransfer.files.length) {
+      input.files = e.dataTransfer.files;
+      showPreview(e.dataTransfer.files[0]);
+    }
+  });
+
+  // ── Loading state on submit ────────────────────────────
+  form.addEventListener('submit', () => {
+    if (!input.files.length) return;
+    submitBtn.classList.add('loading');
+    submitBtn.disabled = true;
+    submitBtn.querySelector('span:last-child').textContent = 'Running…';
+  });
+})();
+</script>
 {% endblock %}
